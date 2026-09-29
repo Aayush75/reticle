@@ -316,3 +316,32 @@ describe('the labels read is scoped to labelable elements', () => {
     expect(getAccessibleName(el)).toBe('held');
   });
 });
+
+describe('fieldset named by its legend', () => {
+  it('names a fieldset from its direct-child legend', () => {
+    const fieldset = document.createElement('fieldset');
+    const legend = document.createElement('legend');
+    legend.textContent = 'Shipping address';
+    fieldset.append(legend, document.createElement('input'));
+    expect(getAccessibleName(fieldset)).toBe('Shipping address');
+  });
+
+  it('does not pick up a legend nested in a child element', () => {
+    const fieldset = document.createElement('fieldset');
+    const wrapper = document.createElement('div');
+    const legend = document.createElement('legend');
+    legend.textContent = 'Nested';
+    wrapper.append(legend);
+    fieldset.append(wrapper);
+    expect(getAccessibleName(fieldset)).toBe('');
+  });
+
+  it('still prefers aria-label over the legend', () => {
+    const fieldset = document.createElement('fieldset');
+    fieldset.setAttribute('aria-label', 'Override');
+    const legend = document.createElement('legend');
+    legend.textContent = 'Shipping address';
+    fieldset.append(legend);
+    expect(getAccessibleName(fieldset)).toBe('Override');
+  });
+});

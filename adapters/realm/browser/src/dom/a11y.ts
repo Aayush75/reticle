@@ -271,6 +271,14 @@ export function getAccessibleName(el: Element): string {
     }
   }
 
+  if ('fieldset' === el.tagName.toLowerCase()) {
+    const legend = [...el.children].find((child) => 'legend' === child.tagName.toLowerCase());
+    if (legend !== undefined) {
+      const text = collapse(textWithoutHidden(legend));
+      if (text.length > 0) return text;
+    }
+  }
+
   if (isInput(el) || isTextArea(el) || isSelect(el)) {
     // Submit-like inputs carry their name on `value`, exactly where the visible caption comes
     // from: `<input type="submit" value="Send">` renders a button reading Send. Without this the
