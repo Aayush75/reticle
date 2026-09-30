@@ -205,10 +205,11 @@ interface BridgeOptions {
    */
   server?: http.Server;
   /**
-   * The SDK-upgrade sentence to attach when a HELLO is skewed. Injected so the daemon can name
-   * this project's packages and package manager; tests that omit it get the no-project fallback.
+   * The SDK-upgrade sentence to attach when a HELLO is skewed, for the project that HELLO named.
+   * Injected so the daemon can name that project's packages and package manager; tests that omit
+   * it get the no-project fallback.
    */
-  sdkFix?: () => string;
+  sdkFix?: (projectId?: string) => string;
 }
 
 /**
@@ -303,7 +304,7 @@ export class Bridge {
   readonly #maxSessions: number;
   readonly #maxPendingConnections: number;
   readonly #helloTimeoutMs: number;
-  readonly #sdkFix: () => string;
+  readonly #sdkFix: (projectId?: string) => string;
   #pendingConnections = 0;
   #onReplay: ReplayRequestHandler | undefined;
   /**
@@ -673,6 +674,9 @@ export class Bridge {
           // The daemon is the single judge of skew, and HELLO is where the page announces itself.
           // Reported on the session (reticle_sessions) AND queued for the next tool result, because an
           // agent driving a flow never calls reticle_sessions and would never learn.
+          // Read only if the page IS skewed: the fix reads the project's package.json and lockfile,
+          // and a compatible page (nearly every HELLO) should not pay for that on connect.
+          const fixForThisProject = (): string => this.#sdkFix(parsed.projectId);
           const skew = describeSkew(
             {
               what: 'the page',
@@ -684,7 +688,9 @@ export class Bridge {
               ...(parsed.contractParts === undefined
                 ? {}
                 : { contractParts: parsed.contractParts }),
-              fix: this.#sdkFix(),
+              get fix(): string {
+                return fixForThisProject();
+              },
             },
             {
               version: SERVER_VERSION,
