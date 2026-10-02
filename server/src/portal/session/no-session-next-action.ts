@@ -13,7 +13,7 @@
  * Pure. The facts arrive from the watch; nothing here touches the disk or the clock.
  */
 
-import { NoSessionAction, RETICLE_URL_PARAM, ReticleEnv } from '@reticlehq/core';
+import { NoSessionAction, RETICLE_URL_PARAM, ReticleEnv, redactUrl } from '@reticlehq/core';
 import type { DevCommand } from './dev-server/dev-command.js';
 
 /** The executable half of the no-session payload. */
@@ -82,6 +82,12 @@ interface NextActionFacts {
    * its one hit is as likely to be another repo's dev server as this one's.
    */
   lastKnownUrl?: string;
+  /**
+   * Where the departed tab was seen heading, when the SDK reported it fresh (#1256). The
+   * next-action reason must agree with the diagnosis: when this is present the tab was not
+   * closed, it navigated away.
+   */
+  departedTo?: string;
 }
 
 /**
@@ -162,13 +168,20 @@ export function nextActionFor(facts: NextActionFacts): NoSessionNextAction {
         : only === undefined
           ? {}
           : { command: `${OPEN_COMMAND} ${LOCALHOST}:${String(only)}`, port: only };
+    // Where the tab was seen heading, when the SDK reported it fresh — the next action must
+    // tell the same story as the diagnosis (#1256).
+    const departedTo = facts.departedTo;
     return {
       action: NoSessionAction.REOPEN_APP,
       ...target,
       reason:
-        'a session was connected to this daemon earlier, so the wiring is correct — the tab was ' +
-        'closed, reloaded, or the lease aged out. Reopen the app, or take one you own with ' +
-        'reticle_lease {action:"acquire", url}.' +
+        'a session was connected to this daemon earlier, so the wiring is correct — ' +
+        // Agrees with the diagnosis: when the SDK saw the page leave, "the tab was closed" is
+        // the wrong story. Redacted like the diagnosis — this reason is agent-facing too.
+        (departedTo === undefined || '' === departedTo
+          ? 'the tab was closed, reloaded, or the lease aged out. '
+          : `the page navigated away to ${redactUrl(departedTo)}. `) +
+        'Reopen the app, or take one you own with reticle_lease {action:"acquire", url}.' +
         bound,
     };
   }

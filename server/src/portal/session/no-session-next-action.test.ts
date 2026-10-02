@@ -345,3 +345,39 @@ describe('a refused page is not a closed tab', () => {
     expect(next.reason).toMatch(/tab was closed/i);
   });
 });
+
+/**
+ * The next action must tell the same story as the diagnosis (#1256): when the SDK saw the page
+ * navigate away, "the tab was closed" is the wrong explanation sitting beside the right one.
+ */
+describe('a departed tab seen navigating away', () => {
+  const base = {
+    everConnected: true,
+    initialized: true,
+    listening: [3000],
+    dev: undefined,
+    lastKnownUrl: 'http://localhost:3000/',
+  } as const;
+
+  it('the reason says navigated away, not closed', () => {
+    const next = nextActionFor({ ...base, departedTo: 'http://localhost:3000/login' });
+    expect(next.action).toBe(NoSessionAction.REOPEN_APP);
+    expect(next.reason).toMatch(/navigated away to http:\/\/localhost:3000\/login/);
+    expect(next.reason).not.toMatch(/tab was closed/i);
+  });
+
+  it('still says closed-tab when no departure was reported', () => {
+    const next = nextActionFor(base);
+    expect(next.reason).toMatch(/tab was closed/i);
+    expect(next.reason).not.toMatch(/navigated away to/i);
+  });
+
+  it('redacts credentials in the reported destination', () => {
+    const next = nextActionFor({
+      ...base,
+      departedTo: 'https://user:s3cret@example.com/oauth/callback?token=abc123',
+    });
+    expect(next.reason).not.toContain('s3cret');
+    expect(next.reason).not.toContain('abc123');
+  });
+});

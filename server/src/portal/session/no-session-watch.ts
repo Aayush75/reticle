@@ -405,7 +405,11 @@ export function startNoSessionWatch(options: NoSessionWatchOptions): () => void 
       // command and the sentence beside it name the same page.
       ...(() => {
         const known = options.sessions.lastKnown?.();
-        return known === undefined ? {} : { lastKnownUrl: known.url };
+        if (known === undefined) return {};
+        return {
+          lastKnownUrl: known.url,
+          ...(known.departedTo === undefined ? {} : { departedTo: known.departedTo }),
+        };
       })(),
       // Read when asked, like everything else here: a `package.json` can gain a dev script, and a
       // daemon that cached "there is none" at boot would keep saying so for the rest of the day.
@@ -475,7 +479,13 @@ export function startNoSessionWatch(options: NoSessionWatchOptions): () => void 
           lastKnownStatus !== undefined && lastKnownStatus.url === known.url
             ? { lastKnownStatus: lastKnownStatus.status }
             : {};
-        return { lastKnownUrl: known.url, ...status };
+        // Where the tab was seen heading, when the SDK reported it fresh. Kept separate from
+        // lastKnownUrl: the 5xx probe needs the page the tab was ON.
+        const departed =
+          known.departedTo === undefined || '' === known.departedTo
+            ? {}
+            : { departedTo: known.departedTo };
+        return { lastKnownUrl: known.url, ...status, ...departed };
       })(),
       // How long this daemon has been waiting with no app. The diagnosis uses it to surface
       // "install never finished" — the same condition telemetry already knows about.
