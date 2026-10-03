@@ -13,7 +13,9 @@
 import { probeRouteStatus } from './dev-server/route-status-probe.js';
 import { probeDevServers, probeDevServerStates } from './dev-server/dev-server-probe.js';
 import type { NoSessionReason } from '@reticlehq/core/telemetry';
+import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
+import { join } from 'node:path';
 import { registeredElsewhere } from '@/memory/recall/registered-projects.js';
 import { explainNoSession } from './no-session-diagnosis.js';
 import type { NoSessionFacts } from './no-session-diagnosis.js';
@@ -73,6 +75,11 @@ interface NoSessionWatchOptions {
   initialized: boolean;
   /** Where that was decided — this daemon's working directory unless a caller says otherwise. */
   directory?: string;
+  /**
+   * File-existence predicate for the project directory. Injected for tests; defaults to
+   * checking the directory on disk.
+   */
+  exists?: (file: string) => boolean;
   probe?: () => Promise<number[]>;
   /**
    * Well-known Reticle ports other than ours that currently accept a connection.
@@ -161,6 +168,7 @@ export function startNoSessionWatch(options: NoSessionWatchOptions): () => void 
   let attachFailure: string | undefined;
 
   const directory = options.directory ?? process.cwd();
+  const exists = options.exists ?? ((file: string) => existsSync(join(directory, file)));
   // The boot answer still counts (it is what the daemon scoped its sessions with), but `.reticle.json`
   // is routinely written by `init` AFTER this daemon started, so re-read rather than cache. See the
   // `initialized` comment below, which this shares.
@@ -392,6 +400,7 @@ export function startNoSessionWatch(options: NoSessionWatchOptions): () => void 
       initialized: scope.initialized,
       ...(scope.configsElsewhere === undefined ? {} : { configsElsewhere: scope.configsElsewhere }),
       previouslyConnected: connectedBefore(),
+      exists,
       // Read when asked, like every other fact here: a page can dial at any moment, and a daemon
       // that cached "nothing has been refused" at boot would keep saying so.
       authRefused: lastCloseWasAuthFailure(),

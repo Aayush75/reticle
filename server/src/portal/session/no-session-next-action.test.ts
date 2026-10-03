@@ -37,6 +37,48 @@ describe('nextActionFor', () => {
     expect(next.reason).toContain('no dev script');
   });
 
+  it('nothing listening and Flutter project: names Flutter and explains canvas rendering instead of no dev script', () => {
+    const next = nextActionFor({
+      everConnected: false,
+      initialized: false,
+      listening: [],
+      dev: undefined,
+      exists: (file) => 'pubspec.yaml' === file,
+    });
+    expect(next.action).toBe(NoSessionAction.START_DEV_SERVER);
+    expect(next.command).toBeUndefined();
+    expect(next.reason).toContain('This is a Flutter project.');
+    expect(next.reason).toContain('canvas element');
+    expect(next.reason).not.toContain('no dev script');
+  });
+
+  it('nothing listening and other non-JS project: names the ecosystem', () => {
+    const next = nextActionFor({
+      everConnected: false,
+      initialized: false,
+      listening: [],
+      dev: undefined,
+      exists: (file) => 'requirements.txt' === file,
+    });
+    expect(next.action).toBe(NoSessionAction.START_DEV_SERVER);
+    expect(next.command).toBeUndefined();
+    expect(next.reason).toContain('This looks like a Python project');
+    expect(next.reason).not.toContain('no dev script');
+    expect(next.reason).not.toContain('snippet below');
+  });
+
+  it('mixed Flutter and JS project with no dev script: describes the JS manifest', () => {
+    const next = nextActionFor({
+      everConnected: false,
+      initialized: false,
+      listening: [],
+      dev: undefined,
+      exists: (file) => ['package.json', 'pubspec.yaml'].includes(file),
+    });
+    expect(next.reason).toContain('no dev script');
+    expect(next.reason).not.toContain('Flutter');
+  });
+
   it('carries the port the dev script pins, so the agent knows where the app will be', () => {
     const next = nextActionFor({
       everConnected: false,
