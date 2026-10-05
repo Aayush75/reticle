@@ -1,3 +1,4 @@
+import { TESTID_FOUND_UNDER_SCHEMA } from './query-hint-schema.js';
 import { z } from 'zod';
 import {
   DiscoveryInvite,
@@ -504,6 +505,7 @@ export const RAW_TOOLS: ToolDef[] = [
             .describe(
               'Present when a ROLE+NAME search missed and that role DOES carry a nearly-matching name — role+name is exact, so "Mesh" does not find "2 Mesh". Retry with one of these spellings; no snapshot needed.',
             ),
+          testidFoundUnder: TESTID_FOUND_UNDER_SCHEMA,
         })
         .optional()
         .describe(
