@@ -1444,3 +1444,29 @@ describe('whether this run is the one that registered the MCP', () => {
     expect(r.mcpNewlyRegistered).toBeUndefined();
   });
 });
+
+/**
+ * The closing hint only read the Claude Code row, so with Claude already registered it said the
+ * tools were "available now" straight after a Codex row that said to add the block by hand.
+ */
+describe('the closing hint agrees with the registration rows above it', () => {
+  const CODEX_CONFIG = `${HOME}/.codex/config.toml`;
+
+  it('names the client still left to hand-edit instead of claiming the tools are available', () => {
+    const io = memoryIo(
+      { ...VITE_FILES, [`${HOME}/.codex`]: '', [CODEX_CONFIG]: 'model = "gpt-5"\n' },
+      { mcpExists: true },
+    );
+    runInit(OPTS, io);
+    const printed = io.lines.join('\n');
+    expect(printed).toContain('[⚠] MCP server (Codex CLI)');
+    expect(printed).toContain('(MCP server (Codex CLI))');
+    expect(printed).not.toContain('the tools are available now');
+  });
+
+  it('keeps the plain "available now" line when every registration is settled', () => {
+    const io = memoryIo(VITE_FILES, { mcpExists: true });
+    runInit(OPTS, io);
+    expect(io.lines.join('\n')).toContain('the tools are available now');
+  });
+});
