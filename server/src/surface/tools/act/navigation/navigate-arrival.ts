@@ -134,6 +134,21 @@ export function idsAtTarget(sessions: SessionManager, target: string): ReadonlyS
   return ids;
 }
 
+/**
+ * Whether `current` is a different document from the one the navigation was dispatched on.
+ *
+ * A new Session object under the same id is not enough: the SDK also reopens its socket in place,
+ * and that replaces the Session while the page stays exactly where it was. What a real unload
+ * changes is the document id — the one sampled before dispatch (`navigatedFromDocumentId`) against
+ * the one the live session is reporting (`currentDocumentId`). Either side not having reported one
+ * yet is "cannot tell", which is never reported as a new document.
+ */
+function documentUnloaded(scope: ArrivalScope, current: Session): boolean {
+  const before = scope.navigatedFromDocumentId;
+  const after = current.currentDocumentId;
+  return before !== undefined && after !== undefined && before !== after;
+}
+
 function findArrival(
   sessions: SessionManager,
   target: string,
@@ -229,7 +244,13 @@ export async function awaitArrival(
   const current = sessions.get(scope.navigatedSession.id);
 
   if (current !== undefined) {
-    if (!samePage(current.url, scope.navigatedFrom) && !samePage(current.url, target)) {
+    // Sitting on `navigatedFrom` means two different things: a tab that has not moved, or a page
+    // that unloaded and came back here (an auth guard bouncing `/checkout` to `/login` while the
+    // tab started on `/login`). Only a document that is provably new tells them apart.
+    if (
+      !samePage(current.url, target) &&
+      (!samePage(current.url, scope.navigatedFrom) || documentUnloaded(scope, current))
+    ) {
       return {
         sessionId: current.id,
         landedOn: current.url,
@@ -241,6 +262,9 @@ export async function awaitArrival(
 
   const successor = await awaitDocumentSuccessor(sessions, scope.navigatedSession, 0, clock);
 
+  // A successor under another id is only "unique at the origin", which a tab opened by someone else
+  // after the driven one went away satisfies equally. On the starting page that guess cannot be told
+  // from a redirect, so it is not reported as one.
   if (
     successor !== null &&
     !samePage(successor.url, target) &&

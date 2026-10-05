@@ -8,10 +8,18 @@
  * — never elapsed milliseconds, which is a statement about the machine.
  */
 
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { awaitArrival, idsAtTarget, type ArrivalScope } from './navigate-arrival.js';
 import type { Session } from '@/portal/session/session.js';
 import type { SessionManager } from '@/portal/session/session-manager.js';
+
+/**
+ * Sessions by id, shared by `drove` and `fakeSessions` so a tab the navigation was dispatched to is
+ * the same object the registry later reports. A HELLO replaces that object even when the page did
+ * not reload; `awaitArrival` tells the two apart by the document id sampled before dispatch.
+ */
+const knownSessions = new Map<string, Session>();
+beforeEach(() => knownSessions.clear());
 
 /** A minimal Session-shaped object for the successor logic used by `awaitArrival`. */
 function fakeSession(id: string, url: string, openedBefore = false, documentId?: string): Session {
@@ -40,7 +48,7 @@ function fakeSessions(urlsOverTime: { id: string; url: string; documentId?: stri
   sessions: SessionManager;
   looks: () => number;
 } {
-  const sessionsById = new Map<string, Session>();
+  const sessionsById = knownSessions;
   let look = 0;
   let currentSnapshot: Session[] = [];
 
@@ -96,8 +104,13 @@ const TARGET = 'http://localhost:3000/dashboard';
 
 /** The navigation drove `id`, and nothing was sitting on the target beforehand. */
 function drove(id: string): ArrivalScope {
+  let navigatedSession = knownSessions.get(id);
+  if (navigatedSession === undefined) {
+    navigatedSession = fakeSession(id, 'http://localhost:3000/orders');
+    knownSessions.set(id, navigatedSession);
+  }
   return {
-    navigatedSession: fakeSession(id, 'http://localhost:3000/orders'),
+    navigatedSession,
     navigatedFrom: 'http://localhost:3000/orders',
     priorIds: new Set(),
   };
@@ -183,8 +196,7 @@ describe('awaitArrival', () => {
       ],
     ]);
     const scope: ArrivalScope = {
-      navigatedSession: fakeSession('driven', 'http://localhost:3000/orders'),
-      navigatedFrom: 'http://localhost:3000/orders',
+      ...drove('driven'),
       priorIds: new Set(['zombie']),
     };
     await expect(awaitArrival(sessions, TARGET, scope, 300, fakeClock(100))).resolves.toBeNull();
@@ -348,6 +360,115 @@ describe('awaitArrival', () => {
     ).resolves.toEqual({
       sessionId: 'successor',
       landedOn: 'http://localhost:3000/login',
+    });
+  });
+
+  /**
+   * `/login` -> navigate to `/checkout` -> the auth guard sends the tab back to `/login`. The page
+   * unloaded and reconnected, so this is a redirect even though it ended where the tab started.
+   */
+  describe('when the app sends the tab back to where it started', () => {
+    const FROM = 'http://localhost:3000/login';
+    const scopeFor = (navigatedSession: Session): ArrivalScope => {
+      // Sampled at dispatch, the way the navigate handler does: later events on this object must
+      // not rewrite what "the document we left" means.
+      const navigatedFromDocumentId = navigatedSession.currentDocumentId;
+      return {
+        navigatedSession,
+        navigatedFrom: FROM,
+        ...(navigatedFromDocumentId === undefined ? {} : { navigatedFromDocumentId }),
+        priorIds: new Set(),
+      };
+    };
+    const registryOf = (...live: Session[]): SessionManager =>
+      ({
+        all: () => live,
+        get: (id: string) => live.find((session) => session.id === id),
+      }) as unknown as SessionManager;
+
+    it('reports a same-id reconnect in a new document as a redirect', async () => {
+      const driven = fakeSession('driven', FROM, false, 'doc-before');
+      const reconnected = fakeSession('driven', FROM, false, 'doc-after');
+
+      await expect(
+        awaitArrival(registryOf(reconnected), TARGET, scopeFor(driven), 0, fakeClock(100)),
+      ).resolves.toEqual({ sessionId: 'driven', landedOn: FROM });
+    });
+
+    it('does not call a socket reconnect in the same document a redirect', async () => {
+      // The SDK reopens its socket without reloading the page, so the Session object is replaced
+      // while the tab is still on the page it started from. The document id does not move.
+      const driven = fakeSession('driven', FROM, false, 'doc-before');
+      const reconnected = fakeSession('driven', FROM, false, 'doc-before');
+
+      await expect(
+        awaitArrival(registryOf(reconnected), TARGET, scopeFor(driven), 300, fakeClock(100)),
+      ).resolves.toBeNull();
+    });
+
+    it('reports a redirect when the sampled document id is no longer the one connected', async () => {
+      // The id is read before dispatch. A later event can stamp a new document onto the session
+      // object we still hold, and the sampled id is what says the page unloaded.
+      const driven = fakeSession('driven', FROM, false, 'doc-before');
+      const scope = scopeFor(driven);
+      (driven as unknown as { documentId: string }).documentId = 'doc-after';
+
+      await expect(
+        awaitArrival(registryOf(driven), TARGET, scope, 0, fakeClock(100)),
+      ).resolves.toEqual({ sessionId: 'driven', landedOn: FROM });
+    });
+
+    it('stays unconfirmed when either side has not reported its document yet', async () => {
+      const unreported = fakeSession('driven', FROM);
+      const known = fakeSession('driven', FROM, false, 'doc-after');
+      const knownBefore = fakeSession('driven', FROM, false, 'doc-before');
+
+      await expect(
+        awaitArrival(registryOf(known), TARGET, scopeFor(unreported), 0, fakeClock(100)),
+      ).resolves.toBeNull();
+      await expect(
+        awaitArrival(
+          registryOf(fakeSession('driven', FROM)),
+          TARGET,
+          scopeFor(knownBefore),
+          0,
+          fakeClock(100),
+        ),
+      ).resolves.toBeNull();
+    });
+
+    it('stays unconfirmed with no landedOn when the very same tab never moved', async () => {
+      const driven = fakeSession('driven', FROM, false, 'doc-before');
+
+      await expect(
+        awaitArrival(registryOf(driven), TARGET, scopeFor(driven), 300, fakeClock(100)),
+      ).resolves.toBeNull();
+    });
+
+    it('does not hand back another tab that opened on the starting page', async () => {
+      // The driven session is gone. This tab opened afterwards, so it is not older than the
+      // dispatch, and it is the only one left at the origin — `awaitDocumentSuccessor` will pick
+      // it. Sitting on the starting page does not make it this navigation's landing.
+      const driven = fakeSession('driven', FROM, false, 'doc-before');
+      const stranger = fakeSession('stranger', FROM, false, 'doc-other');
+      let live: Session[] = [driven];
+      const sessions = {
+        all: () => live,
+        get: (id: string) => live.find((session) => session.id === id),
+      } as unknown as SessionManager;
+      let now = 0;
+      const clock = {
+        now: () => now,
+        sleep: (ms: number) => {
+          now += ms;
+          live = [stranger];
+          return Promise.resolve();
+        },
+      };
+
+      await expect(
+        awaitArrival(sessions, TARGET, scopeFor(driven), 100, clock),
+      ).resolves.toBeNull();
     });
   });
 
