@@ -339,7 +339,8 @@ const RULES: readonly { readonly match: RegExp; readonly hint: string }[] = [
   // needs its own rule: none of them contains "no browser session connected" (the scope miss is
   // "no browser session FOR project 'x'", which is the opposite claim — sessions exist).
   {
-    match: /scope mismatch|session\(s\) ARE connected under a different project/i,
+    match:
+      /scope mismatch|session\(s\) ARE connected (?:under a different project|with no projectId)/i,
     hint: RECOVERY.SCOPE_MISMATCH,
   },
   { match: /^session disconnected$|session .* never connected/i, hint: RECOVERY.SESSION_GONE },

@@ -484,6 +484,25 @@ describe('no condition Reticle itself authored is reported as a possible Reticle
         "app. Pass the sessionId above to target one, or restart the daemon from that app's directory.",
       RECOVERY.SCOPE_MISMATCH,
     ],
+    [
+      'a scope mismatch with an untagged session',
+      "no browser session for project 'shop', but 1 session(s) ARE connected with no " +
+        "projectId: (no projectId: the page's connect() carries none) (http://localhost:3000/, sessionId 's1'). " +
+        'The daemon scopes to the .reticle.json of the directory it was started in, so this is a scope ' +
+        "mismatch, not a dead app. Pass the sessionId above to target one, add a projectId to the app's " +
+        "connect() call or .reticle.json, or restart the daemon from that app's directory.",
+      RECOVERY.SCOPE_MISMATCH,
+    ],
+    [
+      'a scope mismatch with mixed tagged and untagged sessions',
+      "no browser session for project 'shop', but 2 session(s) ARE connected under a different project or with no " +
+        "projectId: (no projectId: the page's connect() carries none) (http://localhost:3000/, sessionId 's1'), " +
+        "'atlas' (http://localhost:4310/, sessionId 's2'). " +
+        'The daemon scopes to the .reticle.json of the directory it was started in, so this is a scope ' +
+        "mismatch, not a dead app. Pass the sessionId above to target one, add a projectId to the app's " +
+        "connect() call or .reticle.json, or restart the daemon from that app's directory.",
+      RECOVERY.SCOPE_MISMATCH,
+    ],
     // session-manager.ts — remove() rejects every in-flight command with this exact reason
     ['a session that disconnected mid-call', 'session disconnected', RECOVERY.SESSION_GONE],
     // command-timeout.ts — the bare form, and both forms that already carry advice
