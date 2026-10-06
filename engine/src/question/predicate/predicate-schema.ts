@@ -103,6 +103,10 @@ function usedQueryFields(query: ElementQuery): ReadonlySet<string> {
  * copies out of a query result are the words that match here. `text` is a substring match, matching
  * Testing Library's `exact: false`, and falls back to the name because describe() omits `text` when it
  * equals the accessible name.
+ *
+ * `alt` is the accessible name of an image, which every descriptor already carries — so it needs no
+ * field of its own, only the role that says the name IS an alt. On anything else it is false, and
+ * `describeAltOnNonImage` is what turns that into a refusal rather than a "no".
  */
 const RESIDUAL_CHECKS: Readonly<
   Record<string, (element: ElementDescriptor, want: string) => boolean>
@@ -111,7 +115,38 @@ const RESIDUAL_CHECKS: Readonly<
   role: (element, want) => element.role === want,
   name: (element, want) => element.name.trim() === want.trim(),
   text: (element, want) => (element.text ?? element.name).includes(want),
+  alt: (element, want) => isImage(element) && element.name.trim() === want.trim(),
 };
+
+/** The role the browser reports for an `<img>`, and the only one whose name is an alt text. */
+const IMAGE_ROLE = 'img';
+const ALT_FIELD = 'alt';
+
+function isImage(element: ElementDescriptor): boolean {
+  return IMAGE_ROLE === element.role;
+}
+
+/**
+ * Why `alt` cannot be checked, when none of the matched elements is an image — or `undefined` when
+ * it can. A button has no alt, so grading it "no" would read as "the alt is wrong" when the truth is
+ * "this is not an image": a refusal that says what to use instead costs one turn.
+ *
+ * Only the case where NO match is an image is refused. With an image among them, the others simply do
+ * not satisfy `alt`, and the verdict is about the images.
+ */
+export function describeAltOnNonImage(
+  checks: readonly [string, string][],
+  elements: readonly ElementDescriptor[],
+): string | undefined {
+  const wantsAlt = checks.some(([field]) => ALT_FIELD === field);
+  if (!wantsAlt || 0 === elements.length || elements.some(isImage)) return undefined;
+  const roles = [...new Set(elements.map((element) => element.role))].join(', ');
+  return (
+    `\`alt\` can only be checked on an image, and the element matched is ${roles}, not ${IMAGE_ROLE}. ` +
+    'For an element that is not an image, assert its accessible name with `name` instead. ' +
+    'On an image, `alt` is the accessible name, so an `aria-label` on it takes precedence over the alt text.'
+  );
+}
 
 interface ResidualQueryChecks {
   /** Dropped fields this side CAN check, as [field, wanted value] pairs. */

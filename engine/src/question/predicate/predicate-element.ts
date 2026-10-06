@@ -15,6 +15,7 @@ import {
   type MatchResult,
 } from '@reticlehq/core';
 import {
+  describeAltOnNonImage,
   describeUnusableElementQuery,
   residualQueryChecks,
   satisfiesResiduals,
@@ -157,6 +158,12 @@ export async function evalElement(
   }
   let match = await matchOnce(session, query, state);
   const subject = JSON.stringify(query);
+  // `alt` is only meaningful on an image, and the role that says so is on the matched descriptor, so
+  // this cannot be refused before the round-trip the way an uncheckable field is.
+  const altRefusal = describeAltOnNonImage(residual.checks, match.elements);
+  if (altRefusal !== undefined) {
+    return { pass: false, failureReason: altRefusal, inconclusive: altRefusal };
+  }
   // A residual narrows the SET; `count` is every match while `elements` is only the described prefix,
   // so a locator broad enough to be truncated cannot be narrowed honestly. Say so instead of guessing.
   if (residual.checks.length > 0 && match.count > match.elements.length) {
