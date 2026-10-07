@@ -35,13 +35,17 @@ function img(over: Partial<ElementDescriptor> = {}): ElementDescriptor {
 
 /** Answers MATCH with a fixed element list, whatever the query — the locator half is not under test. */
 class MatchingSession implements PredicateSession {
-  constructor(private readonly elements: ElementDescriptor[]) {}
+  /** `total` is every match; `elements` is only the described prefix, which the browser cuts. */
+  constructor(
+    private readonly elements: ElementDescriptor[],
+    private readonly total: number = elements.length,
+  ) {}
   command(name: string): Promise<CommandResult> {
     const result: MatchResult | undefined =
       name === ReticleCommand.MATCH
         ? {
             matched: this.elements.length > 0,
-            count: this.elements.length,
+            count: this.total,
             elements: this.elements,
           }
         : undefined;
@@ -138,6 +142,21 @@ describe('element predicate: alt beside a locator that does not read it', () => 
     });
     expect(result.pass).toBe(false);
     expect(result.inconclusive).toContain('name');
+  });
+
+  it('says to narrow the locator, not "not an image", when the match set was cut off', async () => {
+    // Only a prefix of the matches is described. If that prefix is all buttons, an image may still
+    // sit later in the set — so claiming "none of these is an image" would be a guess.
+    const prefix = [img({ role: 'button', name: 'A' }), img({ role: 'button', name: 'B' })];
+    const result = await evaluatePredicate(new MatchingSession(prefix, 5), {
+      kind: 'element',
+      query: { testid: 'gallery', alt: 'Product photo' },
+    });
+    expect(result.pass).toBe(false);
+    expect(result.inconclusive).toContain('narrow the locator');
+    expect(result.inconclusive, 'it must not claim the matches are not images').not.toContain(
+      'can only be checked on an image',
+    );
   });
 
   it('judges the images when the locator also matched something that is not one', async () => {

@@ -96,6 +96,11 @@ function usedQueryFields(query: ElementQuery): ReadonlySet<string> {
 const IMAGE_ROLE = 'img';
 const ALT_FIELD = 'alt';
 
+/** What the refusal says about `alt` on something that is not an image, and what to assert instead. */
+const ALT_IMAGE_ONLY = '`alt` can only be checked on an image';
+const ALT_USE_NAME =
+  'For an element that is not an image, assert its accessible name with `name` instead.';
+
 function isImage(element: ElementDescriptor): boolean {
   return IMAGE_ROLE === element.role;
 }
@@ -144,10 +149,7 @@ export function describeAltOnNonImage(
   const wantsAlt = checks.some(([field]) => ALT_FIELD === field);
   if (!wantsAlt || 0 === elements.length || elements.some(isImage)) return undefined;
   const roles = [...new Set(elements.map((element) => element.role))].join(', ');
-  return (
-    `\`alt\` can only be checked on an image, and the element matched is ${roles}, not ${IMAGE_ROLE}. ` +
-    'For an element that is not an image, assert its accessible name with `name` instead.'
-  );
+  return `${ALT_IMAGE_ONLY}, and the element matched is ${roles}, not ${IMAGE_ROLE}. ${ALT_USE_NAME}`;
 }
 
 interface ResidualQueryChecks {
