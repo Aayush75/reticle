@@ -161,9 +161,9 @@ export function appendReticleParams(
 
 export { cleanNavError, evaluateSeedPrecondition, scrubSeedFromError } from './lease-seed.js';
 import {
-  cleanNavError,
   evaluateSeedPrecondition,
   looksLikeStorageStateExport,
+  navFailureMessage,
   scrubSeedFromError,
 } from './lease-seed.js';
 
@@ -614,10 +614,8 @@ export const LEASE_ACQUIRE_TOOL: ToolDef = {
           throw new Error(scrubSeedFromError(err.message, validatedSeed));
         }
         // A raw page.goto failure is noisy and leaks the internal URL params — surface a clean,
-        // actionable message instead.
-        throw new Error(
-          `could not open ${url} — is the app running there? (${cleanNavError(err, validatedSeed)})`,
-        );
+        // actionable message instead, one that tells a slow first compile from a missing app.
+        throw new Error(navFailureMessage(url, err, validatedSeed));
       }
       // Wait for the leased tab's SDK to connect so the returned sessionId is usable right away.
       // Resolved rather than assumed: an app that names its own session registers under that name,
