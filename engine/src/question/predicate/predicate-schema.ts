@@ -90,6 +90,17 @@ function usedQueryFields(query: ElementQuery): ReadonlySet<string> {
 }
 
 /**
+ * The role the browser reports for an `<img>`. It stands in for "an image" because the descriptor
+ * carries no tag name, so anything else with this role — an `<svg role="img">` — counts as one too.
+ */
+const IMAGE_ROLE = 'img';
+const ALT_FIELD = 'alt';
+
+function isImage(element: ElementDescriptor): boolean {
+  return IMAGE_ROLE === element.role;
+}
+
+/**
  * How a dropped field is checked back on the server, against the descriptor the match returned.
  *
  * `value` is the field this exists for: `{ role: "textbox", name: "GST amount", value: "274.58" }`
@@ -115,16 +126,8 @@ const RESIDUAL_CHECKS: Readonly<
   role: (element, want) => element.role === want,
   name: (element, want) => element.name.trim() === want.trim(),
   text: (element, want) => (element.text ?? element.name).includes(want),
-  alt: (element, want) => isImage(element) && element.name.trim() === want.trim(),
+  [ALT_FIELD]: (element, want) => isImage(element) && element.name.trim() === want.trim(),
 };
-
-/** The role the browser reports for an `<img>`, and the only one whose name is an alt text. */
-const IMAGE_ROLE = 'img';
-const ALT_FIELD = 'alt';
-
-function isImage(element: ElementDescriptor): boolean {
-  return IMAGE_ROLE === element.role;
-}
 
 /**
  * Why `alt` cannot be checked, when none of the matched elements is an image — or `undefined` when
@@ -143,8 +146,7 @@ export function describeAltOnNonImage(
   const roles = [...new Set(elements.map((element) => element.role))].join(', ');
   return (
     `\`alt\` can only be checked on an image, and the element matched is ${roles}, not ${IMAGE_ROLE}. ` +
-    'For an element that is not an image, assert its accessible name with `name` instead. ' +
-    'On an image, `alt` is the accessible name, so an `aria-label` on it takes precedence over the alt text.'
+    'For an element that is not an image, assert its accessible name with `name` instead.'
   );
 }
 
