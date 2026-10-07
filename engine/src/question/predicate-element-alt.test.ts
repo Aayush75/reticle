@@ -127,6 +127,19 @@ describe('element predicate: alt beside a locator that does not read it', () => 
     expect(result.inconclusive).toContain('button');
   });
 
+  it('absent: a non-image is refused too, never counted as an absence of that alt', async () => {
+    // A button cannot have the alt, so "no element with this alt" would be trivially true of it — and
+    // that is the false green the refusal exists to prevent.
+    const button = img({ role: 'button', name: 'Product photo' });
+    const result = await evaluatePredicate(new MatchingSession([button]), {
+      kind: 'element',
+      query: { testid: 'buy-now', alt: 'Product photo' },
+      absent: true,
+    });
+    expect(result.pass).toBe(false);
+    expect(result.inconclusive).toContain('name');
+  });
+
   it('judges the images when the locator also matched something that is not one', async () => {
     const result = await evaluatePredicate(
       new MatchingSession([img({ role: 'button', name: 'Product photo' }), img()]),
