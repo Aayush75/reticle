@@ -19,6 +19,7 @@ import {
   describeAltOnNonImage,
   describeUnusableElementQuery,
   residualQueryChecks,
+  withAltProjected,
   satisfiesResiduals,
   describeResidual,
   type EvalResult,
@@ -182,7 +183,7 @@ export async function evalElement(
     const reason = describeUnusableElementQuery(query, residual.unusable);
     return { pass: false, failureReason: reason, inconclusive: reason };
   }
-  let match = await matchOnce(session, query, state);
+  let match = await matchOnce(session, withAltProjected(query, residual.checks), state);
   const subject = JSON.stringify(query);
   // A residual narrows the SET; `count` is every match while `elements` is only the described prefix,
   // so a locator broad enough to be truncated cannot be narrowed honestly. Say so instead of guessing.

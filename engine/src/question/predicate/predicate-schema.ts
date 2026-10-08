@@ -95,6 +95,8 @@ function usedQueryFields(query: ElementQuery): ReadonlySet<string> {
  */
 const IMAGE_ROLE = 'img';
 const ALT_FIELD = 'alt';
+/** How a failure reports an image that carries no `alt` attribute at all. */
+const NO_ALT_ATTRIBUTE = '(no alt attribute)';
 
 /** What the refusal says about `alt` on something that is not an image, and what to assert instead. */
 const ALT_IMAGE_ONLY = '`alt` can only be checked on an image';
@@ -120,9 +122,10 @@ function isImage(element: ElementDescriptor): boolean {
  * Testing Library's `exact: false`, and falls back to the name because describe() omits `text` when it
  * equals the accessible name.
  *
- * `alt` is the accessible name of an image, which every descriptor already carries — so it needs no
- * field of its own, only the role that says the name IS an alt. On anything else it is false, and
- * `describeAltOnNonImage` is what turns that into a refusal rather than a "no".
+ * `alt` is read from the image's `alt` ATTRIBUTE, projected onto the match by `withAltProjected` —
+ * not from its accessible name. Both a decorative `alt=""` and a missing alt give an empty name, and
+ * only the attribute tells them apart: a missing alt is the defect `alt: ""` exists to rule out. On
+ * anything but an image it is false, and `describeAltOnNonImage` turns that into a refusal.
  */
 /**
  * Does an element whose computed role is `actual` satisfy a query for `queried`?
@@ -144,8 +147,21 @@ const RESIDUAL_CHECKS: Readonly<
   role: (element, want) => matchesRole(element.role, want),
   name: (element, want) => element.name.trim() === want.trim(),
   text: (element, want) => (element.text ?? element.name).includes(want),
-  [ALT_FIELD]: (element, want) => isImage(element) && element.name.trim() === want.trim(),
+  [ALT_FIELD]: (element, want) => {
+    const alt = element.attrs?.[ALT_FIELD];
+    return isImage(element) && alt !== undefined && alt.trim() === want.trim();
+  },
 };
+
+/** The query to send, asking the browser to project `alt` when this side has to check it. */
+export function withAltProjected(
+  query: ElementQuery,
+  checks: readonly [string, string][],
+): ElementQuery {
+  const attrs = query.attrs ?? [];
+  if (!checks.some(([field]) => ALT_FIELD === field) || attrs.includes(ALT_FIELD)) return query;
+  return { ...query, attrs: [...attrs, ALT_FIELD] };
+}
 
 /**
  * Why `alt` cannot be checked, when none of the matched elements is an image — or `undefined` when
@@ -233,7 +249,9 @@ export function describeResidual(element: ElementDescriptor, field: string): str
         ? (element.text ?? element.name)
         : 'role' === field
           ? element.role
-          : element.name;
+          : ALT_FIELD === field
+            ? (element.attrs?.[ALT_FIELD] ?? NO_ALT_ATTRIBUTE)
+            : element.name;
   return `${element.role} "${element.name}" ${field}=${JSON.stringify(reading)}`;
 }
 

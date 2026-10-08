@@ -3,7 +3,8 @@
  *
  * An element predicate that names `alt` beside a locator which does not read it (`testid`, or
  * `scope` + `self`) is checked against the descriptor this package returns: the element must report
- * `role: "img"`, and its `name` must be the alt text. Both halves live here, so they are pinned here —
+ * `role: "img"`, and the `alt` attribute it asks to have projected must be the alt text — absent when
+ * the image has none, so a missing alt never reads as a decorative one. Both halves live here, so they are pinned here —
  * the engine cannot import this package, and a fake session there only proves the comparison, not that
  * a real `<img>` produces the descriptor the comparison assumes.
  */
@@ -16,6 +17,7 @@ beforeEach(() => {
     <div>
       <img data-testid="hero" alt="Product photo" src="hero.png">
       <img data-testid="decorative" alt="" src="deco.png">
+      <img data-testid="missing" src="missing.png">
       <img data-testid="labelled" alt="Product photo" aria-label="Hero banner" src="label.png">
       <button data-testid="buy">Buy</button>
     </div>`;
@@ -40,6 +42,13 @@ describe('an <img> as the descriptor an alt check reads', () => {
 
   it('reports an empty name for a decorative image', () => {
     expect(only({ testid: 'decorative' })).toEqual({ role: 'img', name: '' });
+  });
+
+  it('projects an empty alt for a decorative image and none for an image missing its alt', () => {
+    const attrsOf = (testid: string): Record<string, string> | undefined =>
+      runQuery({ testid, attrs: ['alt'] }).elements[0]?.attrs;
+    expect(attrsOf('decorative')).toEqual({ alt: '' });
+    expect(attrsOf('missing')).toBeUndefined();
   });
 
   it('lets an aria-label take precedence over the alt as the name', () => {

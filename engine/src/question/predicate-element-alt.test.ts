@@ -6,8 +6,8 @@
  * locator resolves by the first of its fields that is present, so with a `testid` the `alt` is left
  * over — and `alt` had no entry in the residual checks, so there was nothing to verify it with.
  *
- * An image's `alt` IS its accessible name, which every descriptor already carries, so the check is a
- * comparison against `name` on an image. The one thing that must stay refused is a non-image: a
+ * The check reads the image's `alt` attribute, projected onto the match, rather than its accessible
+ * name: a decorative `alt=""` and a missing alt both have an empty name, and only one is correct. The one thing that must stay refused is a non-image: a
  * button has no alt, and answering "no" for it would read as "the alt is wrong" when the truth is
  * "this is not an image".
  */
@@ -22,15 +22,25 @@ import {
 } from '@reticlehq/core';
 import { evaluatePredicate, type PredicateSession } from './predicate/predicate.js';
 
+/** An image whose `alt` attribute is its name unless `attrs` says otherwise (`{}` = no alt at all). */
 function img(over: Partial<ElementDescriptor> = {}): ElementDescriptor {
+  const name = over.name ?? 'Product photo';
   return {
     ref: asRef('r1'),
     role: 'img',
-    name: 'Product photo',
+    name,
     states: [],
     visible: true,
+    attrs: { alt: name },
     ...over,
   };
+}
+
+/** The browser projects an attribute only when the query asks for it, so this fake does too. */
+function projected(element: ElementDescriptor, wanted: readonly string[]): ElementDescriptor {
+  const attrs = Object.entries(element.attrs ?? {}).filter(([key]) => wanted.includes(key));
+  const { attrs: _dropped, ...rest } = element;
+  return 0 === attrs.length ? rest : { ...rest, attrs: Object.fromEntries(attrs) };
 }
 
 /** Answers MATCH with a fixed element list, whatever the query — the locator half is not under test. */
@@ -40,13 +50,14 @@ class MatchingSession implements PredicateSession {
     private readonly elements: ElementDescriptor[],
     private readonly total: number = elements.length,
   ) {}
-  command(name: string): Promise<CommandResult> {
+  command(name: string, args?: unknown): Promise<CommandResult> {
+    const wanted = (args as { query?: { attrs?: string[] } } | undefined)?.query?.attrs ?? [];
     const result: MatchResult | undefined =
       name === ReticleCommand.MATCH
         ? {
             matched: this.elements.length > 0,
             count: this.total,
-            elements: this.elements,
+            elements: this.elements.map((element) => projected(element, wanted)),
           }
         : undefined;
     return Promise.resolve({ kind: 'command_result', id: 'x', ok: true, result });
@@ -106,6 +117,27 @@ describe('element predicate: alt beside a locator that does not read it', () => 
     const query = { testid: 'hero-image', alt: '' };
     expect((await evaluatePredicate(decorative, { kind: 'element', query })).pass).toBe(true);
     expect((await evaluatePredicate(described, { kind: 'element', query })).pass).toBe(false);
+  });
+
+  it('an image with NO alt attribute is not decorative: `alt: ""` fails on it', async () => {
+    // Both report role img and an empty name. Only the attribute tells them apart, and a missing alt
+    // is the accessibility defect an empty-alt check exists to rule out.
+    const missing = new MatchingSession([img({ name: '', attrs: {} })]);
+    const result = await evaluatePredicate(missing, {
+      kind: 'element',
+      query: { testid: 'hero-image', alt: '' },
+    });
+    expect(result.pass).toBe(false);
+    expect(result.observed).toContain('no alt attribute');
+  });
+
+  it('reads the alt attribute, not an aria-label that overrides the name', async () => {
+    const labelled = img({ name: 'Hero banner', attrs: { alt: 'Product photo' } });
+    const result = await evaluatePredicate(new MatchingSession([labelled]), {
+      kind: 'element',
+      query: { testid: 'hero-image', alt: 'Product photo' },
+    });
+    expect(result.pass).toBe(true);
   });
 
   it('absent: an image with a different alt satisfies an absence check', async () => {
